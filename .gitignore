@@ -1,0 +1,40 @@
+# Node dependencies
+node_modules/
+
+# Build and cache artifacts (Solidity/Hardhat/Foundry)
+artifacts/
+cache/
+out/
+broadcast/
+coverage/
+coverage.json
+
+# Environment variables
+.env
+.env.*
+*.env
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+*.log
+
+# OS / Editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Dist / build outputs
+dist/
+build/
+
+# Typechain / generated types
+typechain/
+typechain-types/
+
+# Misc
+*.tgz
