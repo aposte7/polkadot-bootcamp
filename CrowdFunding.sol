@@ -30,6 +30,17 @@ contract CrowdfundingCampaign {
         isActive = true;
     }
 
+    function fund() external payable {
+        require(isActive, "Campaign is not active");
+        require(block.timestamp < deadline, "Campaign deadline has passed");
+        require(msg.value >= minimumFund, "Contribution below minimum");
+        require(totalFund + msg.value <= fundGoal, "Would exceed funding goal");
+
+        totalFund += msg.value;
+        if (totalFund >= fundGoal) {
+            isActive = false;
+        }
+    }
 
     function getName() external view returns (string memory) {
         return campaignName;
@@ -88,6 +99,14 @@ contract CrowdfundingCampaign {
         if(currentTime >= deadline){
             isActive = false;
         }
+    }
+
+    receive() external payable { 
+        fund();
+    }
+
+    fallback() external payable { 
+        fund();
     }
 
 }
