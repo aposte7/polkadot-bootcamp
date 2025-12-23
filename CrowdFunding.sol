@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
-
-import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {PriceFeed} from "./PriceFeedLibrary.sol";
 
 error TransferFailed();
 
 contract CrowdfundingCampaign {
 
-    address private owner;
+    using PriceFeed for uint;
 
+    address private owner;
     string private campaignName;
     string private campaignDescription;
 
@@ -20,7 +20,6 @@ contract CrowdfundingCampaign {
 
     bool private isActive;
 
-    AggregatorV3Interface public priceFeed;
 
     mapping(address => uint256) public contributionsETH;
     address[] fundersAddress;
@@ -46,16 +45,9 @@ contract CrowdfundingCampaign {
 
     constructor() {
         owner = msg.sender;
-        priceFeed = AggregatorV3Interface(
-            0x694AA1769357215DE4FAC081bf1f309aDC325306
-        );
     }
 
-
     function CreateCampaign (string calldata _name, string calldata _description, uint256 _fundGoalUSD, uint256 _deadline, uint256 _minimumFundUSD) public onlyOwner {
-        
-        owner = msg.sender;
-        priceFeed = AggregatorV3Interface(0x694AA1769357215DE4FAC081bf1f309aDC325306);
 
         require(bytes(_name).length >= 3, "Name too short");
         require(bytes(_description).length >= 5, "Description too short");
@@ -80,13 +72,9 @@ contract CrowdfundingCampaign {
         require(isActive, "Campaign inactive");
         require(block.timestamp < deadline, "Deadline passed");
 
-        uint256 usdAmount = getUSDValue(msg.value);
+        uint256 usdAmount = msg.value.getUSDValue();
 
         require(usdAmount >= minimumFundUSD, "Below minimum");
-        require(
-            totalFundedUSD + usdAmount <= fundGoalUSD,
-            "Goal exceeded"
-        );
 
         contributionsETH[msg.sender] += msg.value;
         fundersAddress.push(msg.sender);
@@ -98,7 +86,6 @@ contract CrowdfundingCampaign {
             isActive = false;
         }
     }
-
 
 
     function withdraw() public onlyOwner{
@@ -113,16 +100,6 @@ contract CrowdfundingCampaign {
         
        if(!success) revert TransferFailed();
 
-    }
-
-
-    function getETHPrice() public view returns (uint256) {
-        (, int256 price,,,) = priceFeed.latestRoundData();
-        return uint256(price) * 1e10; // 8 → 18 decimals
-    }
-
-    function getUSDValue(uint256 ethAmount) public view returns (uint256){
-        return (ethAmount * getETHPrice()) / 1e18;
     }
 
     function getFundingGoal() external view returns (uint256) { 
