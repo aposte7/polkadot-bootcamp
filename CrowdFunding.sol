@@ -102,6 +102,13 @@ contract CrowdfundingCampaign {
 
     }
 
+    function getCampaignName() external  view returns(string memory){
+        return campaignName;
+    }
+    function getCampaignDescription() external  view returns(string memory){
+        return campaignDescription;
+    }
+
     function getFundingGoal() external view returns (uint256) { 
         return fundGoalUSD; 
     } 
