@@ -1,112 +1,163 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.20;
+
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+
+error TransferFailed();
 
 contract CrowdfundingCampaign {
-   string private campaignName;
-   string private campaignDescription;
-   uint256 private fundGoal;
-   uint private totalFund;
-   address private owner;
 
-   uint256 private deadline;
-   uint256 private minimumFund;
-   bool private isActive;
+    address private owner;
 
-   constructor(){
-        owner = msg.sender;
-   }
-    
-    function createCampaign(string calldata _campaignName, string calldata _campaignDescription, uint _fundGoal, uint _deadline, uint256 _minimumFund) public {
-        require(_deadline >= block.timestamp + 1 hours, "deadline should be at least 1 hour from now");
-        require(bytes(_campaignName).length >= 3, "campaign name should be at least 3 characters");
-        require(bytes(_campaignDescription).length >= 5, "campaign description should be at least 5 characters");
-        require(_fundGoal > 1 ether, "Fund goal should be more than 1 ETH");
+    string private campaignName;
+    string private campaignDescription;
 
-        campaignName = _campaignName;
-        campaignDescription = _campaignDescription;
-        fundGoal = _fundGoal;
-        deadline = _deadline;
-        minimumFund = _minimumFund;
-        isActive = true;
+    uint256 private fundGoalUSD;       
+    uint256 private totalFundedUSD;    
+
+    uint256 private deadline;
+    uint256 private minimumFundUSD;
+
+    bool private isActive;
+
+    AggregatorV3Interface public priceFeed;
+
+    mapping(address => uint256) public contributionsETH;
+    address[] fundersAddress;
+
+    event CampaignCreated(
+        string name,
+        uint256 goalUSD,
+        uint256 deadline
+    );
+
+    event Funded(
+        address indexed contributor,
+        uint256 ethAmount,
+        uint256 usdAmount
+    );
+
+    event Withdrawn(uint256 ethAmount);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
     }
 
-    function fund() external payable {
-        require(isActive, "Campaign is not active");
-        require(block.timestamp < deadline, "Campaign deadline has passed");
-        require(msg.value >= minimumFund, "Contribution below minimum");
-        require(totalFund + msg.value <= fundGoal, "Would exceed funding goal");
+    constructor() {
+        owner = msg.sender;
+        priceFeed = AggregatorV3Interface(
+            0x694AA1769357215DE4FAC081bf1f309aDC325306
+        );
+    }
 
-        totalFund += msg.value;
-        if (totalFund >= fundGoal) {
+
+    function CreateCampaign (string calldata _name, string calldata _description, uint256 _fundGoalUSD, uint256 _deadline, uint256 _minimumFundUSD) public onlyOwner {
+        
+        owner = msg.sender;
+        priceFeed = AggregatorV3Interface(0x694AA1769357215DE4FAC081bf1f309aDC325306);
+
+        require(bytes(_name).length >= 3, "Name too short");
+        require(bytes(_description).length >= 5, "Description too short");
+        require(_fundGoalUSD > 0, "Goal must be > 0");
+        require(_minimumFundUSD > 0, "Minimum must be > 0");
+        require(_deadline >= block.timestamp + 1 hours, "Deadline too soon");
+
+        campaignName = _name;
+        campaignDescription = _description;
+
+        fundGoalUSD = _fundGoalUSD * 1e18;     
+        minimumFundUSD = _minimumFundUSD * 1e18;
+
+        totalFundedUSD = 0;
+        deadline = _deadline;
+        isActive = true;
+
+        emit CampaignCreated(_name, fundGoalUSD, _deadline);
+    }
+
+    function contribute() public  payable {
+        require(isActive, "Campaign inactive");
+        require(block.timestamp < deadline, "Deadline passed");
+
+        uint256 usdAmount = getUSDValue(msg.value);
+
+        require(usdAmount >= minimumFundUSD, "Below minimum");
+        require(
+            totalFundedUSD + usdAmount <= fundGoalUSD,
+            "Goal exceeded"
+        );
+
+        contributionsETH[msg.sender] += msg.value;
+        fundersAddress.push(msg.sender);
+        totalFundedUSD += usdAmount;
+
+        emit Funded(msg.sender, msg.value, usdAmount);
+
+        if (totalFundedUSD == fundGoalUSD) {
             isActive = false;
         }
     }
 
-    function getName() external view returns (string memory) {
-        return campaignName;
+
+
+    function withdraw() public onlyOwner{
+        for(uint i = 0; i < fundersAddress.length; i++){
+            address funder = fundersAddress[i];
+            delete contributionsETH[funder];
+        }
+
+        fundersAddress = new address[](0);
+
+        (bool success,) = payable (msg.sender).call{value: address(this).balance}("");
+        
+       if(!success) revert TransferFailed();
+
     }
 
-    function getDescription() external view returns (string memory) {
-        return campaignDescription;
+
+    function getETHPrice() public view returns (uint256) {
+        (, int256 price,,,) = priceFeed.latestRoundData();
+        return uint256(price) * 1e10; // 8 → 18 decimals
     }
 
-    function getFundingGoal() external view returns (uint256) {
-        return fundGoal;
+    function getUSDValue(uint256 ethAmount) public view returns (uint256){
+        return (ethAmount * getETHPrice()) / 1e18;
     }
 
+    function getFundingGoal() external view returns (uint256) { 
+        return fundGoalUSD; 
+    } 
+    
     function getCreator() external view returns (address) {
-        return owner;
-    }
+         return owner; 
+    } 
 
     function getTotalFundsRaised() external view returns (uint256) {
-        return totalFund;
+        return totalFundedUSD; 
     }
 
     function getDeadline() external view returns (uint256) {
-        return deadline;
+        return deadline; 
     }
 
     function getMinContribution() external view returns (uint256) {
-        return minimumFund;
+        return minimumFundUSD; 
     }
 
     function getIsActive() external view returns (bool) {
-        return isActive;
+        return isActive; 
     }
 
-    function getRemainingFunding() external view returns (uint256) {
-        if (totalFund >= fundGoal) {
-            return 0;
-        }
-        return fundGoal - totalFund;
+    function getRemainingFunding() external view returns (uint256) { 
+        if (totalFundedUSD >= fundGoalUSD) { return 0; } return fundGoalUSD - totalFundedUSD; 
+    } 
+    function getDaysUntilDeadline() external view returns (uint256) { 
+        if (block.timestamp >= deadline) { return 0; } return (deadline - block.timestamp) / 86400; 
     }
+    
 
-    function getDaysUntilDeadline() external view returns (uint256) {
-        if (block.timestamp >= deadline) {
-            return 0;
-        }
-        return (deadline - block.timestamp) / 86400; 
+    receive() external payable {
+        contribute();
     }
-
-    function isAcceptingDonations() public view returns (bool) {
-        return isActive && (block.timestamp < deadline) && (totalFund < fundGoal);
-    }
-
-
-    function setStatus() public {
-        uint256 currentTime = block.timestamp;
-
-        if(currentTime >= deadline){
-            isActive = false;
-        }
-    }
-
-    receive() external payable { 
-        fund();
-    }
-
-    fallback() external payable { 
-        fund();
-    }
-
 }
